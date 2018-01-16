@@ -1,0 +1,10 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Data
+data/
+prediction/
+
+# Mac OS
+**/.DS_Store
