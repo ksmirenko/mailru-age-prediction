@@ -15,6 +15,7 @@ test_users_path = os.path.join(data_path, "users")
 results_path = "prediction"
 birth_dates_path = os.path.join(results_path, "birth_dates")
 test_graph_path = os.path.join(results_path, "test_graph")
+prediction_path = os.path.join(results_path, "prediction_schoolmates_plus_unfiltered.csv")
 
 global_start = timeit.default_timer()
 
@@ -127,6 +128,61 @@ def extract_and_save_data():
 
 # endregion
 
+# region Prediction
+
+def predict_and_write():
+    local_start = timeit.default_timer()
+
+    skip_mask = ~(1 | (1 << 1) | (1 << 2) | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 14) | (1 << 15) | (1 << 20))
+
+    with open(prediction_path, 'w') as output:
+        writer = csv.writer(output, delimiter=',')
+        for user in test_users:
+            user_id = user - 1  # to avoid confusion
+            user_ptr = test_graph.indptr[user_id]
+            next_user_ptr = test_graph.indptr[user_id + 1]
+
+            unfiltered_sum = 0
+            unfiltered_count = 0
+            filtered_sum = 0
+            filtered_count = 0
+            schoolmates_sum = 0
+            schoolmates_count = 0
+            college_fellows_sum = 0
+            college_fellows_count = 0
+
+            for link_ptr in range(user_ptr, next_user_ptr):
+                mask = test_graph.data[link_ptr]
+                friend_id = test_graph.indices[link_ptr]
+                friend_birth_date = birth_dates[friend_id]
+
+                unfiltered_sum += friend_birth_date
+                unfiltered_count += 1
+                if ~(mask & skip_mask):
+                    filtered_sum += friend_birth_date
+                    filtered_count += 1
+                if mask & (1 << 10):
+                    schoolmates_sum += friend_birth_date
+                    schoolmates_count += 1
+                if mask & (1 << 14):
+                    college_fellows_sum += friend_birth_date
+                    college_fellows_count += 1
+
+            res_scores = [int(unfiltered_sum / unfiltered_count)]
+            if filtered_count:
+                res_scores.append(int(filtered_sum / filtered_count))
+            if schoolmates_count:
+                res_scores.append(int(schoolmates_sum / schoolmates_count))
+            if college_fellows_count:
+                res_scores.append(int(college_fellows_sum / college_fellows_count))
+
+            writer.writerow([user, np.mean(res_scores)])
+
+    print(f"Done predicting. Saved to {prediction_path}")
+    print_resource_usage(local_start)
+
+
+# endregion
 
 # Pre-calculated values
 max_user_id = 47289241
@@ -137,10 +193,12 @@ links_count = 27261623
 test_users = load_test_users()
 
 # Load transformed data
-birth_dates = np.load(birth_dates_path)
+birth_dates = np.load(f"{birth_dates_path}.npy")
 test_graph = load_csr(test_graph_path)
 # To extract from raw data:
 # extract_and_save_data()
+
+predict_and_write()
 
 print("All done.")
 print_resource_usage(global_start)
